@@ -1,0 +1,11 @@
+{
+  "name": "Field Electrician Attendance PWA",
+  "description": "Lightweight, mobile-first PWA for field electricians in India featuring geo-tagged watermarked selfie attendance, job site milestones verification workflow with video tutorials, offline sync, and a supervisor admin review panel.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

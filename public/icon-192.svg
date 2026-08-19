@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="36" fill="#0284c7"/>
+  <rect x="12" y="12" width="168" height="168" rx="28" fill="#0f172a"/>
+  <!-- Electric Flash Bolt Icon -->
+  <path d="M106 28L46 104H96L86 164L146 88H96L106 28Z" fill="#f59e0b" stroke="#fbbf24" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="140" cy="52" r="14" fill="#10b981"/>
+  <path d="M135 52L139 56L146 48" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
