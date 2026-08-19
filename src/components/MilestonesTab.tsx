@@ -41,6 +41,23 @@ export const MilestonesTab: React.FC<MilestonesTabProps> = ({
     submissionMap.set(sub.milestoneId, sub);
   });
 
+  const sortedMilestones = [...milestones].sort((a, b) => a.stepOrder - b.stepOrder);
+  let unlockedUpTo = 0;
+  for (let i = 0; i < sortedMilestones.length; i++) {
+    const sub = submissionMap.get(sortedMilestones[i].id);
+    if (sub?.status === 'approved') {
+      unlockedUpTo = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  // Pre-calculate lock status per milestone using sortedMilestones
+  const lockMap = new Map<string, boolean>();
+  sortedMilestones.forEach((sm, index) => {
+    lockMap.set(sm.id, index > unlockedUpTo);
+  });
+
   // Calculate stats
   const total = milestones.length;
   let approvedCount = 0;
@@ -184,6 +201,7 @@ export const MilestonesTab: React.FC<MilestonesTabProps> = ({
               milestone={milestone}
               submission={submissionMap.get(milestone.id)}
               language={language}
+              isLocked={lockMap.get(milestone.id) ?? false}
               onOpenVideo={onOpenVideo}
               onOpenSubmit={onOpenSubmit}
               onViewPhoto={onViewPhoto}

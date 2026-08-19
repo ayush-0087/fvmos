@@ -41,7 +41,6 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
   onSubmit
 }) => {
   const t = translations[language];
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [rawPhoto, setRawPhoto] = useState<File | Blob | null>(null);
   const [location, setLocation] = useState<GeoLocationData | null>(null);
@@ -88,28 +87,6 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
     }
   };
 
-  // Launch rear camera file input
-  const handleLaunchCamera = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  // Handle hardware camera file capture
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Strict validation: check if file is an image
-    if (!file.type.startsWith('image/')) {
-      setError('Please capture a valid image photo of the completed electrical work.');
-      return;
-    }
-
-    setRawPhoto(file);
-    await processCapturedImage(file);
-  };
-
   // Live In-App Camera stream start
   const handleStartLiveRearCamera = async () => {
     try {
@@ -128,9 +105,9 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
         videoRef.current.srcObject = stream;
       }
     } catch (err: any) {
-      console.warn('Rear camera stream failed, fallback to native camera prompt:', err);
+      console.warn('Rear camera stream failed:', err);
       setIsLiveCameraActive(false);
-      handleLaunchCamera();
+      setError('Unable to access rear camera. Please ensure camera permissions are enabled in your browser/device settings.');
     }
   };
 
@@ -190,6 +167,11 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
 
   // Confirm and submit
   const handleConfirmSubmit = async () => {
+    if (gpsStatus === 'fallback') {
+      setError('GPS could not get a real location lock. Move to an open area, enable location permission, and try again before submitting.');
+      return;
+    }
+
     if (!compressionResult || !location) return;
 
     setIsSubmitting(true);
@@ -232,16 +214,6 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      {/* Hidden Strict Environment Rear Camera Input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
       <div className="w-full max-w-lg bg-white border border-gray-200 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 bg-white border-b border-gray-100 flex items-center justify-between">
@@ -345,9 +317,9 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
 
               <div className="w-full space-y-2 pt-2">
                 <button
-                  id="launch-native-rear-cam-btn"
+                  id="open-camera-btn"
                   type="button"
-                  onClick={handleLaunchCamera}
+                  onClick={handleStartLiveRearCamera}
                   disabled={isProcessing}
                   className="w-full py-3.5 bg-[#0052cc] hover:bg-[#0041a3] active:bg-blue-900 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-500/20 flex items-center justify-center space-x-2 transition-all active:scale-98"
                 >
@@ -359,17 +331,9 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
                   ) : (
                     <>
                       <Camera className="w-4 h-4" />
-                      <span>Launch Rear Camera</span>
+                      <span>Open Camera</span>
                     </>
                   )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleStartLiveRearCamera}
-                  className="w-full py-2.5 bg-white hover:bg-gray-100 text-gray-700 font-bold text-xs rounded-2xl border border-gray-200 flex items-center justify-center space-x-2 transition-colors"
-                >
-                  <span>Use In-App Viewfinder</span>
                 </button>
               </div>
             </div>
@@ -426,7 +390,10 @@ export const MilestoneSubmissionModal: React.FC<MilestoneSubmissionModalProps> =
             <>
               <button
                 type="button"
-                onClick={handleLaunchCamera}
+                onClick={() => {
+                  setCompressionResult(null);
+                  handleStartLiveRearCamera();
+                }}
                 disabled={isSubmitting}
                 className="px-4 py-3 bg-white hover:bg-gray-100 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition-colors"
               >

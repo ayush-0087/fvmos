@@ -30,7 +30,9 @@ import {
   getLocalMilestones,
   getLocalMilestoneSubmissions,
   submitMilestoneWork,
-  updateMilestoneSubmissionStatus
+  updateMilestoneSubmissionStatus,
+  fetchMilestones,
+  fetchMySubmissions
 } from './services/storageService';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
@@ -64,6 +66,24 @@ export default function App() {
   const [milestones, setMilestones] = useState<Milestone[]>(() => getLocalMilestones());
   const [submissions, setSubmissions] = useState<MilestoneSubmission[]>(() => getLocalMilestoneSubmissions());
   const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [freshMilestones, freshSubmissions] = await Promise.all([
+        fetchMilestones(),
+        fetchMySubmissions()
+      ]);
+      if (active) {
+        setMilestones(freshMilestones);
+        setSubmissions((prev) => {
+          const others = prev.filter((s) => s.workerId !== user?.workerId);
+          return [...others, ...freshSubmissions];
+        });
+      }
+    })();
+    return () => { active = false; };
+  }, [user?.id]);
 
   // Modals state
   const [activeCapture, setActiveCapture] = useState<{
@@ -211,8 +231,13 @@ export default function App() {
     photoBlob: Blob
   ) => {
     setSelectedSubmitMilestone(null);
-    await submitMilestoneWork(submission, photoBlob);
+    const res = await submitMilestoneWork(submission, photoBlob);
     setSubmissions(getLocalMilestoneSubmissions());
+
+    if (!res.success && res.error) {
+      showToast(`⚠️ ${res.error}`);
+      return;
+    }
 
     showToast(
       language === 'hi'

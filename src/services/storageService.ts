@@ -264,66 +264,58 @@ export function saveLocalMilestoneSubmissions(submissions: MilestoneSubmission[]
 export async function submitMilestoneWork(
   submission: MilestoneSubmission,
   photoBlob?: Blob
-): Promise<{ success: boolean; synced: boolean; error?: string }> {
-  const existing = getLocalMilestoneSubmissions();
-  let updatedSubmission = { ...submission };
-
-  let synced = false;
-  if (isSupabaseConfigured() && supabase && navigator.onLine) {
-    try {
-      let photoUrl = '';
-      if (photoBlob) {
-        const filePath = `milestones/${submission.milestoneId}/${submission.workerId}_${Date.now()}.jpg`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('attendance-selfies')
-          .upload(filePath, photoBlob, {
-            contentType: 'image/jpeg',
-            upsert: true
-          });
-
-        if (!uploadErr && uploadData) {
-          const { data: publicUrlData } = supabase.storage
-            .from('attendance-selfies')
-            .getPublicUrl(filePath);
-          photoUrl = publicUrlData.publicUrl;
-        }
-      }
-
-      const { error: dbError } = await supabase.from('milestone_submissions').insert([
-        {
-          id: submission.id,
-          milestone_id: submission.milestoneId,
-          worker_id: submission.workerId,
-          submitted_at: submission.submittedAt,
-          submitted_image_url: photoUrl || submission.submittedImageUrl,
-          latitude: submission.location.latitude,
-          longitude: submission.location.longitude,
-          status: submission.status,
-          admin_feedback: submission.adminFeedback || null
-        }
-      ]);
-
-      if (!dbError) {
-        synced = true;
-        updatedSubmission.syncStatus = 'synced';
-        if (photoUrl) updatedSubmission.submittedImageUrl = photoUrl;
-      }
-    } catch (e) {
-      console.warn('Supabase milestone upload error, keeping offline:', e);
-      updatedSubmission.syncStatus = 'pending';
-    }
-  } else {
-    updatedSubmission.syncStatus = 'pending';
+): Promise<{ success: boolean; synced: boolean; error?: string; locked?: boolean }> {
+  if (!isSupabaseConfigured() || !supabase || !navigator.onLine) {
+    const existing = getLocalMilestoneSubmissions();
+    const updated = { ...submission, syncStatus: 'pending' as const };
+    const filtered = existing.filter(
+      (s) => !(s.milestoneId === submission.milestoneId && s.workerId === submission.workerId)
+    );
+    saveLocalMilestoneSubmissions([...filtered, updated]);
+    return { success: true, synced: false };
   }
 
-  // Replace previous submission for this worker & milestone or append
-  const filtered = existing.filter(
-    (s) => !(s.milestoneId === submission.milestoneId && s.workerId === submission.workerId)
-  );
-  const updatedList = [updatedSubmission, ...filtered];
-  saveLocalMilestoneSubmissions(updatedList);
+  try {
+    let photoUrl = submission.submittedImageUrl;
+    if (photoBlob) {
+      const filePath = `milestones/${submission.milestoneId}/${submission.workerId}_${Date.now()}.jpg`;
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('milestone-proofs')
+        .upload(filePath, photoBlob, { contentType: 'image/jpeg', upsert: true });
 
-  return { success: true, synced };
+      if (uploadErr) return { success: false, synced: false, error: uploadErr.message };
+
+      const { data: publicUrlData } = supabase.storage.from('milestone-proofs').getPublicUrl(filePath);
+      photoUrl = publicUrlData.publicUrl;
+    }
+
+    const result = await submitMilestoneGated(
+      submission.milestoneId,
+      submission.location.latitude,
+      submission.location.longitude,
+      photoUrl
+    );
+
+    if (!result.success) {
+      return { success: false, synced: false, error: result.message || result.reason, locked: result.reason === 'locked' };
+    }
+
+    const existing = getLocalMilestoneSubmissions();
+    const updated: MilestoneSubmission = {
+      ...submission,
+      submittedImageUrl: photoUrl,
+      status: 'pending',
+      syncStatus: 'synced'
+    };
+    const filtered = existing.filter(
+      (s) => !(s.milestoneId === submission.milestoneId && s.workerId === submission.workerId)
+    );
+    saveLocalMilestoneSubmissions([...filtered, updated]);
+
+    return { success: true, synced: true };
+  } catch (e: any) {
+    return { success: false, synced: false, error: e?.message || 'Submission failed' };
+  }
 }
 
 /**
@@ -382,3 +374,99 @@ export function saveStoredUser(user: UserProfile | null): void {
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
   }
 }
+
+export async function fetchMilestones(): Promise<Milestone[]> {
+  if (!supabase) return getLocalMilestones();
+  try {
+    const { data, error } = await supabase
+      .from('milestones')
+      .select('*')
+      .order('step_order', { ascending: true });
+    if (error || !data) throw error || new Error('No data');
+
+    const mapped: Milestone[] = data.map((row: any) => ({
+      id: row.id,
+      stepOrder: row.step_order,
+      title: row.title,
+      titleHi: row.title_hi || row.title,
+      description: row.description,
+      descriptionHi: row.description_hi || row.description,
+      referenceImageUrl: row.reference_image_url,
+      youtubeVideoUrl: row.youtube_url || ''
+    }));
+    localStorage.setItem(STORAGE_KEY_MILESTONES, JSON.stringify(mapped));
+    return mapped;
+  } catch (e) {
+    console.warn('Milestone fetch failed, using cached/local copy:', e);
+    return getLocalMilestones();
+  }
+}
+
+export async function fetchMySubmissions(): Promise<MilestoneSubmission[]> {
+  if (!supabase) return getLocalMilestoneSubmissions();
+  const { data: userData } = await supabase.auth.getUser();
+  const workerId = userData?.user?.id;
+  if (!workerId) return [];
+
+  const { data, error } = await supabase
+    .from('milestone_submissions')
+    .select('*')
+    .eq('worker_id', workerId)
+    .order('submitted_at', { ascending: true });
+  if (error || !data) return getLocalMilestoneSubmissions();
+
+  return data.map((row: any) => ({
+    id: row.id,
+    milestoneId: row.milestone_id,
+    workerId: row.worker_id,
+    workerName: '',
+    workerPhone: '',
+    substation: '',
+    submittedAt: row.submitted_at,
+    dateFormatted: new Date(row.submitted_at).toLocaleDateString(),
+    timeFormatted: new Date(row.submitted_at).toLocaleTimeString(),
+    submittedImageUrl: row.proof_image_url,
+    compressedSizeKb: 0,
+    location: { latitude: row.latitude, longitude: row.longitude, accuracy: 0, timestamp: 0 },
+    status: row.status,
+    adminFeedback: row.admin_feedback,
+    reviewedAt: row.reviewed_at,
+    reviewedBy: row.reviewed_by,
+    syncStatus: 'synced'
+  }));
+}
+
+export async function submitMilestoneGated(
+  milestoneId: string,
+  latitude: number,
+  longitude: number,
+  proofImageUrl: string
+): Promise<{ success: boolean; reason?: string; message?: string; distance_meters?: number }> {
+  if (!supabase) return { success: false, reason: 'offline', message: 'Not connected to server.' };
+  const { data, error } = await supabase.rpc('submit_milestone', {
+    p_milestone_id: milestoneId,
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_proof_image_url: proofImageUrl
+  });
+  if (error) return { success: false, reason: 'error', message: error.message };
+  return data as any;
+}
+
+export async function submitAttendanceGated(
+  latitude: number,
+  longitude: number,
+  accuracyMeters: number,
+  selfieUrl: string
+): Promise<{ success: boolean; reason?: string; message?: string; distance_meters?: number }> {
+  if (!supabase) return { success: false, reason: 'offline', message: 'Not connected to server.' };
+  const { data, error } = await supabase.rpc('submit_attendance', {
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_accuracy_meters: accuracyMeters,
+    p_selfie_url: selfieUrl
+  });
+  if (error) return { success: false, reason: 'error', message: error.message };
+  return data as any;
+}
+

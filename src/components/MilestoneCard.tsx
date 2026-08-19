@@ -10,7 +10,8 @@ import {
   ChevronRight,
   Sparkles,
   Info,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import { Milestone, MilestoneSubmission, Language } from '../types';
 import { translations } from '../translations';
@@ -19,6 +20,7 @@ interface MilestoneCardProps {
   milestone: Milestone;
   submission?: MilestoneSubmission;
   language: Language;
+  isLocked: boolean;
   onOpenVideo: (milestone: Milestone) => void;
   onOpenSubmit: (milestone: Milestone) => void;
   onViewPhoto: (imageUrl: string, title: string) => void;
@@ -28,6 +30,7 @@ export const MilestoneCard: React.FC<MilestoneCardProps> = ({
   milestone,
   submission,
   language,
+  isLocked,
   onOpenVideo,
   onOpenSubmit,
   onViewPhoto
@@ -38,6 +41,14 @@ export const MilestoneCard: React.FC<MilestoneCardProps> = ({
   const status = submission ? submission.status : 'pending';
 
   const getStatusBadge = () => {
+    if (isLocked) {
+      return (
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200 flex items-center space-x-1">
+          <span>Locked</span>
+        </span>
+      );
+    }
+
     switch (status) {
       case 'approved':
         return (
@@ -74,7 +85,11 @@ export const MilestoneCard: React.FC<MilestoneCardProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs transition-all hover:shadow-md space-y-4">
+    <div
+      className={`bg-white border border-gray-200 rounded-3xl p-5 shadow-xs transition-all space-y-4 ${
+        isLocked ? 'opacity-50 pointer-events-none' : 'hover:shadow-md'
+      }`}
+    >
       {/* Top Header & Status */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center space-x-3">
@@ -243,6 +258,11 @@ export const MilestoneCard: React.FC<MilestoneCardProps> = ({
             <Camera className="w-4 h-4 text-[#0052cc]" />
             <span>Update / Retake Submission Photo</span>
           </button>
+        ) : isLocked ? (
+          <div className="w-full py-3.5 bg-gray-100 text-gray-400 font-bold text-xs uppercase tracking-wider rounded-2xl border border-gray-200 flex items-center justify-center space-x-2 cursor-not-allowed">
+            <Lock className="w-4 h-4 text-gray-400" />
+            <span>{language === 'hi' ? 'पहले पिछला चरण पूरा करें (Locked)' : 'Complete Previous Step First (Locked)'}</span>
+          </div>
         ) : (
           <button
             type="button"
